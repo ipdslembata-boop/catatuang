@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pencatatan Keuangan Simpel & GSheet</title>
+    <title>Pencatatan Keuangan Terhubung GSheet</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -13,9 +13,14 @@
 <body class="p-4 sm:p-6 text-slate-800 max-w-2xl mx-auto">
 
     <!-- Header -->
-    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-5">
-        <h1 class="text-lg font-bold text-slate-900">Pencatatan Keuangan Simpel</h1>
-        <p class="text-xs text-slate-500 mt-0.5">Format ribuan otomatis (titik) & langsung masuk ke Google Sheets.</p>
+    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-5 flex justify-between items-center">
+        <div>
+            <h1 class="text-lg font-bold text-slate-900">Keuangan Simpel</h1>
+            <p class="text-xs text-slate-500 mt-0.5">Sinkron otomatis dengan Google Sheets.</p>
+        </div>
+        <button onclick="loadData()" id="btnRefresh" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer">
+            🔄 Muat Ulang
+        </button>
     </div>
 
     <!-- Ringkasan Saldo -->
@@ -53,11 +58,10 @@
             </div>
             <div>
                 <label class="block text-[11px] font-semibold text-slate-600 mb-1">Keterangan</label>
-                <input type="text" id="inputKeterangan" placeholder="Contoh: Gaji Bulanan / Beli Makan" required class="w-full text-xs bg-slate-50 border border-slate-300 rounded-xl p-2.5 outline-none focus:border-blue-500">
+                <input type="text" id="inputKeterangan" placeholder="Contoh: Gaji / Beli Makan" required class="w-full text-xs bg-slate-50 border border-slate-300 rounded-xl p-2.5 outline-none focus:border-blue-500">
             </div>
             <div>
                 <label class="block text-[11px] font-semibold text-slate-600 mb-1">Jumlah (Rp)</label>
-                <!-- Input menggunakan teks agar bisa diformat otomatis dengan titik ribuan -->
                 <input type="text" id="inputJumlah" placeholder="50.000" oninput="formatRupiahInput(this)" required class="w-full text-xs bg-slate-50 border border-slate-300 rounded-xl p-2.5 outline-none focus:border-blue-500 font-semibold text-slate-800">
             </div>
             <button type="submit" id="btnSimpan" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold p-3 rounded-xl transition cursor-pointer shadow-sm">
@@ -66,11 +70,11 @@
         </form>
     </div>
 
-    <!-- Riwayat Singkat -->
+    <!-- Riwayat Transaksi -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div class="p-4 border-b border-slate-100 flex justify-between items-center">
-            <h2 class="text-xs font-bold text-slate-900">Riwayat Transaksi (Lokal)</h2>
-            <button onclick="clearLokal()" class="text-[10px] text-red-500 font-semibold cursor-pointer">Reset Tampilan</button>
+            <h2 class="text-xs font-bold text-slate-900">Riwayat Transaksi (Dari Google Sheets)</h2>
+            <span id="statusLoad" class="text-[10px] text-slate-400">Memuat data...</span>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse text-xs">
@@ -83,20 +87,17 @@
                     </tr>
                 </thead>
                 <tbody id="tabelTransaksi" class="divide-y divide-slate-100">
-                    <tr><td colspan="4" class="p-5 text-center text-slate-400">Belum ada transaksi tercatat.</td></tr>
+                    <tr><td colspan="4" class="p-5 text-center text-slate-400">Menghubungkan ke Google Sheets...</td></tr>
                 </tbody>
             </table>
         </div>
     </div>
 
     <script>
-        // URL Google Apps Script yang sudah dimasukkan
         const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxxJ6DW1jegCtCUnEKo0Zyc-SUcTbHabSFzNBpaS2pyqPJnMkfLLCrPPcY6qR2li4an/exec";
 
-        let transaksis = JSON.parse(localStorage.getItem('transaksi_simpel')) || [];
         document.getElementById('inputTanggal').valueAsDate = new Date();
 
-        // Fungsi otomatis format titik ribuan saat mengetik di input jumlah
         function formatRupiahInput(el) {
             let value = el.value.replace(/[^,\d]/g, '').toString();
             let split = value.split(',');
@@ -113,28 +114,52 @@
             el.value = rupiah;
         }
 
-        function renderUI() {
+        // Ambil data dari Google Sheets saat halaman dibuka
+        async function loadData() {
+            const statusLoad = document.getElementById('statusLoad');
+            statusLoad.innerText = '⏳ Menyinkronkan...';
+            
+            try {
+                const response = await fetch(WEB_APP_URL);
+                const transaksis = await response.json();
+                
+                renderUI(transaksis);
+                statusLoad.innerText = '✅ Sinkron';
+            } catch (error) {
+                console.error(error);
+                statusLoad.innerText = '❌ Gagal memuat';
+                document.getElementById('tabelTransaksi').innerHTML = `<tr><td colspan="4" class="p-5 text-center text-red-400">Gagal memuat data dari Google Sheets.</td></tr>`;
+            }
+        }
+
+        function renderUI(transaksis) {
             const tbody = document.getElementById('tabelTransaksi');
             tbody.innerHTML = '';
 
             let pemasukan = 0;
             let pengeluaran = 0;
 
-            if (transaksis.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4" class="p-5 text-center text-slate-400">Belum ada transaksi tercatat.</td></tr>`;
+            if (!Array.isArray(transaksis) || transaksis.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="p-5 text-center text-slate-400">Belum ada transaksi tercatat di Google Sheets.</td></tr>`;
             } else {
                 transaksis.slice().reverse().forEach(item => {
-                    const jml = Number(item.jumlah);
+                    const jml = Number(item.jumlah) || 0;
                     if (item.jenis === 'Pendapatan') pemasukan += jml;
                     else pengeluaran += jml;
 
                     const badgeColor = item.jenis === 'Pendapatan' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700';
 
+                    // Format tanggal agar rapi jika berupa format ISO
+                    let tglFormatted = item.tanggal;
+                    if(item.tanggal && item.tanggal.length > 10) {
+                        tglFormatted = item.tanggal.substring(0, 10);
+                    }
+
                     tbody.innerHTML += `
                         <tr class="hover:bg-slate-50">
-                            <td class="p-3 text-slate-500">${item.tanggal}</td>
-                            <td class="p-3 font-medium text-slate-800">${item.keterangan}</td>
-                            <td class="p-3"><span class="px-2 py-0.5 rounded-md text-[10px] font-semibold ${badgeColor}">${item.jenis}</span></td>
+                            <td class="p-3 text-slate-500">${tglFormatted || '-'}</td>
+                            <td class="p-3 font-medium text-slate-800">${item.keterangan || '-'}</td>
+                            <td class="p-3"><span class="px-2 py-0.5 rounded-md text-[10px] font-semibold ${badgeColor}">${item.jenis || 'Pengeluaran'}</span></td>
                             <td class="p-3 text-right font-semibold ${item.jenis === 'Pendapatan' ? 'text-emerald-600' : 'text-rose-600'}">
                                 ${item.jenis === 'Pendapatan' ? '+' : '-'} Rp ${jml.toLocaleString('id-ID')}
                             </td>
@@ -147,8 +172,6 @@
             document.getElementById('totalPemasukan').innerText = 'Rp ' + pemasukan.toLocaleString('id-ID');
             document.getElementById('totalPengeluaran').innerText = 'Rp ' + pengeluaran.toLocaleString('id-ID');
             document.getElementById('totalSaldo').innerText = 'Rp ' + saldo.toLocaleString('id-ID');
-
-            localStorage.setItem('transaksi_simpel', JSON.stringify(transaksis));
         }
 
         async function tambahTransaksi(e) {
@@ -157,7 +180,6 @@
             const jenis = document.getElementById('inputJenis').value;
             const keterangan = document.getElementById('inputKeterangan').value;
             
-            // Ambil nilai jumlah dan hilangkan tanda titik (.) agar menjadi angka murni sebelum dikirim ke GSheet
             const rawJumlah = document.getElementById('inputJumlah').value;
             const jumlah = rawJumlah.replace(/\./g, '');
 
@@ -168,7 +190,6 @@
             const dataBaru = { tanggal, jenis, keterangan, jumlah };
 
             try {
-                // Kirim otomatis ke Google Sheets via Apps Script
                 await fetch(WEB_APP_URL, {
                     method: 'POST',
                     mode: 'no-cors',
@@ -176,10 +197,14 @@
                     body: JSON.stringify(dataBaru)
                 });
 
-                transaksis.push(dataBaru);
                 document.getElementById('transaksiForm').reset();
                 document.getElementById('inputTanggal').valueAsDate = new Date();
-                renderUI();
+                
+                // Tunggu 1 detik lalu tarik data terbaru dari GSheet
+                setTimeout(() => {
+                    loadData();
+                }, 1000);
+
                 alert('Berhasil! Data tersimpan ke Google Sheets.');
             } catch (error) {
                 console.error(error);
@@ -190,14 +215,8 @@
             }
         }
 
-        function clearLokal() {
-            if(confirm('Hapus riwayat tampilan lokal? (Data di Google Sheets tetap aman)')) {
-                transaksis = [];
-                renderUI();
-            }
-        }
-
-        renderUI();
+        // Jalankan saat pertama kali halaman dibuka di HP / PC
+        loadData();
     </script>
 </body>
 </html>
