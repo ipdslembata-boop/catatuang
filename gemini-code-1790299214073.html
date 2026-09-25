@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pencatatan Keuangan Simpel & GSheet</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    </style>
+</head>
+<body class="p-4 sm:p-6 text-slate-800 max-w-2xl mx-auto">
+
+    <!-- Header -->
+    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-5">
+        <h1 class="text-lg font-bold text-slate-900">Pencatatan Keuangan Simpel</h1>
+        <p class="text-xs text-slate-500 mt-0.5">Catat pemasukan dan pengeluaran langsung masuk ke Google Sheets.</p>
+    </div>
+
+    <!-- Ringkasan Saldo -->
+    <div class="grid grid-cols-3 gap-3 mb-5">
+        <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl">
+            <p class="text-[10px] font-semibold text-emerald-600 uppercase">Pemasukan</p>
+            <h2 id="totalPemasukan" class="text-sm sm:text-base font-bold text-emerald-700 mt-1">Rp 0</h2>
+        </div>
+        <div class="bg-rose-50 border border-rose-200 p-4 rounded-2xl">
+            <p class="text-[10px] font-semibold text-rose-600 uppercase">Pengeluaran</p>
+            <h2 id="totalPengeluaran" class="text-sm sm:text-base font-bold text-rose-700 mt-1">Rp 0</h2>
+        </div>
+        <div class="bg-blue-50 border border-blue-200 p-4 rounded-2xl">
+            <p class="text-[10px] font-semibold text-blue-600 uppercase">Sisa Saldo</p>
+            <h2 id="totalSaldo" class="text-sm sm:text-base font-bold text-blue-700 mt-1">Rp 0</h2>
+        </div>
+    </div>
+
+    <!-- Form Input -->
+    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-5">
+        <h2 class="text-xs font-bold text-slate-900 mb-3">Tambah Transaksi Baru</h2>
+        <form id="transaksiForm" onsubmit="tambahTransaksi(event)" class="space-y-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Tanggal</label>
+                    <input type="date" id="inputTanggal" required class="w-full text-xs bg-slate-50 border border-slate-300 rounded-xl p-2.5 outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Jenis Transaksi</label>
+                    <select id="inputJenis" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-xl p-2.5 outline-none focus:border-blue-500 font-medium">
+                        <option value="Pendapatan">🟢 Pendapatan</option>
+                        <option value="Pengeluaran">🔴 Pengeluaran</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Keterangan</label>
+                <input type="text" id="inputKeterangan" placeholder="Contoh: Gaji Bulanan / Beli Makan" required class="w-full text-xs bg-slate-50 border border-slate-300 rounded-xl p-2.5 outline-none focus:border-blue-500">
+            </div>
+            <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Jumlah (Rp)</label>
+                <input type="number" id="inputJumlah" placeholder="50000" required class="w-full text-xs bg-slate-50 border border-slate-300 rounded-xl p-2.5 outline-none focus:border-blue-500">
+            </div>
+            <button type="submit" id="btnSimpan" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold p-3 rounded-xl transition cursor-pointer shadow-sm">
+                ➕ Simpan ke GSheet
+            </button>
+        </form>
+    </div>
+
+    <!-- Riwayat Singkat -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="p-4 border-b border-slate-100 flex justify-between items-center">
+            <h2 class="text-xs font-bold text-slate-900">Riwayat Transaksi (Lokal)</h2>
+            <button onclick="clearLokal()" class="text-[10px] text-red-500 font-semibold cursor-pointer">Reset Tampilan</button>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                    <tr class="bg-slate-50 text-slate-500 border-b border-slate-200">
+                        <th class="p-3 font-semibold">Tanggal</th>
+                        <th class="p-3 font-semibold">Keterangan</th>
+                        <th class="p-3 font-semibold">Jenis</th>
+                        <th class="p-3 font-semibold text-right">Jumlah</th>
+                    </tr>
+                </thead>
+                <tbody id="tabelTransaksi" class="divide-y divide-slate-100">
+                    <tr><td colspan="4" class="p-5 text-center text-slate-400">Belum ada transaksi tercatat.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // ⚠️ MASUKKAN URL WEB APP GOOGLE APPS SCRIPT ANDA DI SINI
+        const WEB_APP_URL = "PASTE_URL_WEB_APP_ANDA_DISINI";
+
+        let transaksis = JSON.parse(localStorage.getItem('transaksi_simpel')) || [];
+        document.getElementById('inputTanggal').valueAsDate = new Date();
+
+        function renderUI() {
+            const tbody = document.getElementById('tabelTransaksi');
+            tbody.innerHTML = '';
+
+            let pemasukan = 0;
+            let pengeluaran = 0;
+
+            if (transaksis.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="p-5 text-center text-slate-400">Belum ada transaksi tercatat.</td></tr>`;
+            } else {
+                transaksis.slice().reverse().forEach(item => {
+                    const jml = Number(item.jumlah);
+                    if (item.jenis === 'Pendapatan') pemasukan += jml;
+                    else pengeluaran += jml;
+
+                    const badgeColor = item.jenis === 'Pendapatan' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700';
+
+                    tbody.innerHTML += `
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3 text-slate-500">${item.tanggal}</td>
+                            <td class="p-3 font-medium text-slate-800">${item.keterangan}</td>
+                            <td class="p-3"><span class="px-2 py-0.5 rounded-md text-[10px] font-semibold ${badgeColor}">${item.jenis}</span></td>
+                            <td class="p-3 text-right font-semibold ${item.jenis === 'Pendapatan' ? 'text-emerald-600' : 'text-rose-600'}">
+                                ${item.jenis === 'Pendapatan' ? '+' : '-'} Rp ${jml.toLocaleString('id-ID')}
+                            </td>
+                        </tr>
+                    `;
+                });
+            }
+
+            let saldo = pemasukan - pengeluaran;
+            document.getElementById('totalPemasukan').innerText = 'Rp ' + pemasukan.toLocaleString('id-ID');
+            document.getElementById('totalPengeluaran').innerText = 'Rp ' + pengeluaran.toLocaleString('id-ID');
+            document.getElementById('totalSaldo').innerText = 'Rp ' + saldo.toLocaleString('id-ID');
+
+            localStorage.setItem('transaksi_simpel', JSON.stringify(transaksis));
+        }
+
+        async function tambahTransaksi(e) {
+            e.preventDefault();
+            const tanggal = document.getElementById('inputTanggal').value;
+            const jenis = document.getElementById('inputJenis').value;
+            const keterangan = document.getElementById('inputKeterangan').value;
+            const jumlah = document.getElementById('inputJumlah').value;
+
+            const btn = document.getElementById('btnSimpan');
+            btn.innerText = '⏳ Mengirim ke GSheet...';
+            btn.disabled = true;
+
+            const dataBaru = { tanggal, jenis, keterangan, jumlah };
+
+            try {
+                // Kirim otomatis ke Google Sheets via Apps Script
+                await fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dataBaru)
+                });
+
+                transaksis.push(dataBaru);
+                document.getElementById('transaksiForm').reset();
+                document.getElementById('inputTanggal').valueAsDate = new Date();
+                renderUI();
+                alert('Berhasil! Data tersimpan ke Google Sheets.');
+            } catch (error) {
+                console.error(error);
+                alert('Gagal terhubung ke server Google Sheets.');
+            } finally {
+                btn.innerText = '➕ Simpan ke GSheet';
+                btn.disabled = false;
+            }
+        }
+
+        function clearLokal() {
+            if(confirm('Hapus riwayat tampilan lokal? (Data di Google Sheets tetap aman)')) {
+                transaksis = [];
+                renderUI();
+            }
+        }
+
+        renderUI();
+    </script>
+</body>
+</html>
